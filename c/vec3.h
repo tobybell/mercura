@@ -9,11 +9,15 @@ struct vec3 {
 
 typedef struct vec3 vec3_t;
 
+#include "quat.h"
+
 void vec3_add(vec3_t *v1, vec3_t *v2);
 void vec3_sub(vec3_t *v1, vec3_t *v2);
 void vec3_mul(vec3_t *v, flt_t a);
 void vec3_div(vec3_t *v, flt_t a);
 void vec3_scale(vec3_t *v, flt_t a);
+void vec3_rot(vec3_t *v, quat_t *q);
+void vec3_cross(vec3_t *v1, vec3_t *v2);
 
 flt_t vec3_dot(vec3_t *v1, vec3_t *v2);
 flt_t vec3_len(vec3_t *v);
