@@ -36,9 +36,9 @@ void n_body_step(body_t *bodies, int_t n, flt_t dt) {
 }
 
 void body_print(body_t *b) {
-  printf("%s %f ", b->name, b->sgp);
+  printf("%s,%f,", b->name, b->sgp);
   vec3_print(&b->pos);
-  printf(" ");
+  printf(",");
   vec3_print(&b->vel);
 }
 

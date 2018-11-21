@@ -51,7 +51,7 @@ void eoe_from_pv(eoe_t *eoe, vec3_t *r, vec3_t *v, flt_t mu_center) {
 }
 
 void eoe_print(eoe_t *eoe) {
-  printf("{%f %f %f %f %f %f}", eoe->l, eoe->h, eoe->k, eoe->p, eoe->q, eoe->L);
+  printf("%f,%f,%f,%f,%f,%f", eoe->l, eoe->h, eoe->k, eoe->p, eoe->q, eoe->L);
 }
 
 void eoe_println(eoe_t *eoe) {
