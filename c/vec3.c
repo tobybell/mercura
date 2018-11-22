@@ -61,7 +61,7 @@ flt_t vec3_len(vec3_t *v) {
 }
 
 void vec3_print(vec3_t *v) {
-  printf("{%f %f %f}", v->x, v->y, v->z);
+  printf("%f,%f,%f", v->x, v->y, v->z);
 }
 
 void vec3_println(vec3_t *v) {
