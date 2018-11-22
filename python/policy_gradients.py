@@ -1,6 +1,10 @@
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
+import torch.optim as optim
+import subprocess
+import numpy as np
+from torch.autograd import Variable
 
 class Policy(nn.Module):
     def __init__(self, state_size, action_size,):
@@ -17,47 +21,72 @@ class Policy(nn.Module):
         x = F.relu(self.fc2(x))
         x = F.relu(self.fc3(x))
         x = F.relu(self.fc4(x))
-        return F.relu(self.fc5(x))
+        return F.softmax(self.fc5(x))
 
 policy_history = Variable(torch.Tensor())
 reward_episode = []
 reward_history = []
 loss_history = []
-policy = Policy()
+policy = Policy(6, 3)
 optimizer = optim.Adam(policy.parameters(), lr=.001)
+environment = subprocess.Popen(['../c/interactive'], stdout=subprocess.PIPE, stdin=subprocess.PIPE, stderr=subprocess.PIPE)
+
 
 def select_action(state):
-    probs = policy(Variable(state))
-    c = Categorical(probs)
+    probs = policy(torch.Tensor(state))
+    c = torch.distributions.Categorical(probs)
     action = c.sample()
-    if policy.policy_history.dim() != 0:
-        policy.policy_history = torch.cat([policy.policy_history, c.log_prob(action)])
+    prob = c.log_prob(action).unsqueeze(0)
+    global policy_history
+    if policy_history.size(0) != 0:
+        policy_history = torch.cat([policy_history, prob])
     else:
-        policy.policy_history = (c.log_prob(action))
-    return action
+        policy_history = prob
+    return action 
 
 def update_policy():
+    global policy_history
     R = 0
     rewards = []
-    int i 
     for reward in reward_episode[::-1]:
         R = reward + 0.99 * R
-        rewards.insert(0,R)
+        rewards.append(R)
+    rewards = list(reversed(rewards))
     
-    loss = (torch.sum(torch.mul(policy_history, Variable(rewards)).mul(-1), -1))
+    loss = -torch.sum(torch.mul(policy_history, torch.Tensor(rewards)), -1)
     optimizer.zero_grad()
     loss.backward()
-    optimerzer.step()
-    policy.policy_history = Variable(torch.Tensor())
-    reward_episode = []
+    optimizer.step()
+    policy_history = torch.Tensor([])
+    reward_episode.clear()
+
+def get_state(s):
+    s = s.decode("utf-8").strip('{}\n')
+    eoe = list(map(float, s.split()))
+    return np.array(eoe)
+
+def take_action(action, timestep=60.0):
+    s = str(action) + ' ' + str(timestep) + '\n'
+    environment.stdin.write(s.encode('utf-8'))
+    environment.stdin.flush()
+    out = environment.stdout.readline()
+    return get_state(out), 1
+
 
 def main(epochs):
+    s = environment.stdout.readline()
+    state = get_state(s)
     for epoch in range(epochs):
 
         #state = starting state
-        for time in range(10000):
-            action = select_action(state)
-            state, reward = #simulator
+        for time in range(100):
+            action = 1.0 * select_action(state).item() - 1
+            state, reward = take_action(action)
+            print(time, state)
             reward_episode.append(reward)
+        print(epoch)
         update_policy()
+
+if __name__ == '__main__':
+    main(100)
 
