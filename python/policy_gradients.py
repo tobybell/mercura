@@ -6,6 +6,7 @@ import subprocess
 import numpy as np
 import random
 from torch.autograd import Variable
+import sys
 
 
 class Policy(nn.Module):
@@ -22,7 +23,7 @@ class Policy(nn.Module):
         return F.softmax(self.fc5(x), dim=0)
 
 
-policy_history = Variable(torch.Tensor())
+policy_history = torch.Tensor([])
 reward_episode = []
 reward_history = []
 loss_history = []
@@ -55,6 +56,7 @@ def update_policy():
     rewards = list(reversed(rewards))
     
     loss = -torch.sum(torch.mul(policy_history, torch.Tensor(rewards)), -1)
+    print(loss.item())
     optimizer.zero_grad()
     loss.backward()
     optimizer.step()
@@ -76,10 +78,11 @@ def take_action(action, timestep=60.0):
     pv = get_state(out)
     p = pv[:3]
     global last_radius
-    r = np.linalg.norm(p) - last_radius  
+    r = np.abs(last_radius - 2e7) - np.abs(np.linalg.norm(p) - 2e7)
     last_radius = np.linalg.norm(p)
     #r = -np.abs(np.linalg.norm(p) - 2e7)
     return pv, r
+
 
 def env_reset(*pv):
     global last_radius
@@ -100,8 +103,9 @@ def env_reset_leo():
 def env_reset_desired_orbit():
     env_reset(42241095.67708342, 0, 0, 0.017776962751035255, 3071.8591633446, 0)
 
-def train(epochs=100):
+def train(epochs=1000):
     s = environment.stdout.readline()
+    env_reset_geo()
     state = get_state(s)
     print(0, state)
     alternate = False
@@ -115,11 +119,11 @@ def train(epochs=100):
             reward_episode.append(reward)
         print(epoch)
         update_policy()
-        if epoch % 10 == 0:
-            if epoch % 2 == 0:
-                env_reset_leo()
-            else:
+        if epoch % 50 == 0:
+            if epoch % 100 == 0:
                 env_reset_geo()
+            else:
+                env_reset_leo()
     torch.save(policy.state_dict(), 'trained.model')
 
 def test():
@@ -157,5 +161,7 @@ def test():
 
 
 if __name__ == '__main__':
-    # train()
-    test()
+    if '--train' in sys.argv:
+        train()
+    elif '--test' in sys.argv:
+        test()

@@ -1,155 +1,193 @@
+import math
+import random
+import subprocess
+from collections import namedtuple
+
+import numpy as np
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
 import torch.optim as optim
-import subprocess
-import numpy as np
-from torch.autograd import Variable
 
 
-class Policy(nn.Module):
-    def __init__(self, state_size, action_size,):
-        super(Policy, self).__init__()
-        self.fc1 = nn.Linear(state_size + action_size, 12)
-        self.fc2 = nn.Linear(12,12)
-        self.fc5 = nn.Linear(12, 1)
+Transition = namedtuple('Transition',
+                        ('state', 'action', 'next_state', 'reward'))
+
+
+class ReplayMemory(object):
+
+    def __init__(self, capacity):
+        self.capacity = capacity
+        self.memory = []
+        self.position = 0
+
+    def push(self, *args):
+        """Saves a transition."""
+        if len(self.memory) < self.capacity:
+            self.memory.append(None)
+        self.memory[self.position] = Transition(*args)
+        self.position = (self.position + 1) % self.capacity
+
+    def sample(self, batch_size):
+        return random.sample(self.memory, batch_size)
+
+    def __len__(self):
+        return len(self.memory)
+
+
+class DQN(nn.Module):
+
+    def __init__(self, state_size, action_size):
+        super(DQN, self).__init__()
+        self.state_size = state_size
+        self.action_size = action_size
+        self.fc1 = nn.Linear(state_size, 12)
+        self.fc2 = nn.Linear(12, 12)
+        self.head = nn.Linear(12, action_size)
 
     def forward(self, state):
-        """Build a network that maps state -> action values."""
-        x = F.relu(self.fc1(state))
+        x = state
+        x = F.relu(self.fc1(x))
         x = F.relu(self.fc2(x))
-        return self.fc5(x)
+        return self.head(x)
 
 
-history = torch.Tensor()
-policy = Policy(6, 3)
-optimizer = optim.Adam(policy.parameters(), lr=.001)
-environment = subprocess.Popen(['../c/interactive'], stdout=subprocess.PIPE, stdin=subprocess.PIPE, stderr=subprocess.PIPE)
+class Environment(object):
+    def __init__(self):
+        self.sp = subprocess.Popen(['../c/interactive'],
+                                   stdout=subprocess.PIPE,
+                                   stdin=subprocess.PIPE,
+                                   stderr=subprocess.PIPE)
+
+    def get_state(self):
+        return self.step(0, 0)
+
+    def step(self, action, duration=60.0):
+        thrust = 0.1 * action - 0.1
+        cmd = 'a {} {}'.format(thrust, duration)
+        self.sp.stdin.write(cmd.encode('utf-8'))
+        self.sp.stdin.flush()
+        out = self.sp.stdout.readline().decode("utf-8").strip('{}\n')
+        pv = torch.tensor([list(map(float, out.split(',')))])
+        return pv
+
+    def reset(self, *pv):
+        cmd = 'r {}'.format(' '.join(map(str, pv)))
+        self.sp.stdin.write(cmd.encode('utf-8'))
+        self.sp.stdin.flush()
+        self.sp.stdout.readline()
+
+    def reset_rand(self):
+        raise NotImplementedError('Random reset not implemented')
+
+    def reset_geo(self):
+        self.reset(42241095.67708342, 0, 0, 0.017776962751035255, 3071.8591633446, 0)
+
+    def reset_leo():
+        self.reset(7255000.0, 0, 0, 0, 7412.2520611297, 0)
+
+
+BATCH_SIZE = 128
+GAMMA = 0.999
+EPS_START = 0.9
+EPS_END = 0.05
+EPS_DECAY = 10000
+TARGET_UPDATE = 10
+
+
+policy_net = DQN(6, 3)
+target_net = DQN(6, 3)
+target_net.load_state_dict(policy_net.state_dict())
+target_net.eval()
+
+optimizer = optim.RMSprop(policy_net.parameters())
+memory = ReplayMemory(10000)
+env = Environment()
+
+
+steps_done = 0
 
 
 def select_action(state):
-    best_action, best_q_value = best_action(state)
+    global steps_done
+    sample = random.random()
+    eps_threshold = EPS_END + (EPS_START - EPS_END) * \
+        math.exp(-steps_done / EPS_DECAY)
+    steps_done += 1
+    if sample > eps_threshold:
+        with torch.no_grad():
+            return policy_net(state).max(1)[1].view(1, 1)
+    else:
+        return torch.tensor([[random.randrange(3)]], dtype=torch.long)
 
 
-def max_q_function(state):
-    best_action = -1
-    best_q_value = float('-inf')
-    for a in range (3):
-        q_value = policy(np.concat((state, np.array([a]), axis=0)))
-        if q_value > best_q_value:
-            best_action = a
-            best_q_value = q_value
-    return best_action, best_q_value
+def optimize_model():
+    if len(memory) < BATCH_SIZE:
+        return
+    transitions = memory.sample(BATCH_SIZE)
+    # Transpose the batch (see http://stackoverflow.com/a/19343/3343043 for
+    # detailed explanation).
+    batch = Transition(*zip(*transitions))
 
+    # Compute a mask of non-final states and concatenate the batch elements
+    #non_final_mask = torch.tensor(tuple(map(lambda s: s is not None,
+    #                                      batch.next_state)), device=device, dtype=torch.uint8)
+    #non_final_next_states = torch.cat([s for s in batch.next_state
+    #                                            if s is not None])
+    state_batch = torch.cat(batch.state)
+    action_batch = torch.cat(batch.action)
+    reward_batch = torch.cat(batch.reward)
 
-def update_policy():
-    global policy_history
-    R = 0
-    rewards = []
-    for reward in reward_episode[::-1]:
-        R = reward + 0.99 * R
-        rewards.append(R)
-    rewards = list(reversed(rewards))
-    
-    loss = -torch.sum(torch.mul(policy_history, torch.Tensor(rewards)), -1)
+    # Compute Q(s_t, a) - the model computes Q(s_t), then we select the
+    # columns of actions taken
+    state_action_values = policy_net(state_batch).gather(1, action_batch)
+
+    # Compute V(s_{t+1}) for all next states.
+    next_states = torch.cat(batch.next_state)
+    next_state_values = target_net(next_states).max(1)[0].detach()
+    # Compute the expected Q values
+    expected_state_action_values = (next_state_values * GAMMA) + reward_batch
+
+    # Compute Huber loss
+    loss = F.smooth_l1_loss(state_action_values, expected_state_action_values.unsqueeze(1))
+
+    # Optimize the model
     optimizer.zero_grad()
     loss.backward()
+    for param in policy_net.parameters():
+        param.grad.data.clamp_(-1, 1)
     optimizer.step()
-    policy_history = torch.Tensor([])
-    reward_episode.clear()
-
-def update_q_function(state, action, reward, state_prime):
-    _, q_value = max_q_function(state)
-    _, q_value_prime = max_q_function(state_prime)
-
-    loss = torch.(q_value - (reward + q_value_prime )) 
 
 
-def get_state(s):
-    s = s.decode("utf-8").strip('{}\n')
-    pv = list(map(float, s.split(',')))
-    return np.array(pv)
+num_episodes = 50
+for i_episode in range(num_episodes):
+    print(i_episode)
+
+    # Initialize the environment and state
+    env.reset_geo()
+    state = env.get_state()
+    for t in range(10000):
+        # Select and perform an action
+        action = select_action(state)
+        next_state = env.step(action.item(), 60)
+        reward = np.abs(np.linalg.norm(state[:3]) - 2e7) - np.abs(np.linalg.norm(next_state[:3]) - 2e7) 
+        reward = torch.tensor([reward])
+
+        # Store the transition in memory
+        memory.push(state, action, next_state, reward)
+
+        # Move to the next state
+        state = next_state
+
+        # Perform one step of the optimization (on the target network)
+        optimize_model()
+
+    # Update the target network
+    if i_episode % TARGET_UPDATE == 0:
+        target_net.load_state_dict(policy_net.state_dict())
 
 
-def take_action(action, timestep=60.0):
-    s = 'a ' + str(action) + ' ' + str(timestep) + '\n'
-    environment.stdin.write(s.encode('utf-8'))
-    environment.stdin.flush()
-    out = environment.stdout.readline()
-    pv = get_state(out)
-    p = pv[:3]
-    r = -np.abs(np.linalg.norm(p) - 2e7)
-    return pv, r
-
-def env_reset(*pv):
-    s = 'r ' + ' '.join(map(str, pv))
-    environment.stdin.write(s.encode('utf-8'))
-    environment.stdin.flush()
-
-def env_reset_rand():
-    raise NotImplementedError('Random reset not implemented')
-
-def env_reset_geo():
-    env_reset(42241095.67708342, 0, 0, 0.017776962751035255, 3071.8591633446, 0)
-
-def env_reset_leo():
-    env_reset(7255000.0, 0, 0, 0, 7412.2520611297, 0)
-
-def train(epochs=100):
-    s = environment.stdout.readline()
-    state = get_state(s)
-    print(0, state)
-    alternate = False
-    for epoch in range(epochs):
-
-        #state = starting state
-        
-        for i in range(0, 1000):
-            action = 0.1 * select_action(state).item() - 0.1
-            state, reward = take_action(action)
-            reward_episode.append(reward)
-        print(epoch)
-        update_policy()
-        if epoch % 10 == 0:
-            if epoch % 2 == 0:
-                env_reset_leo()
-            else:
-                env_reset_geo()
-    torch.save(policy.state_dict(), 'trained.model')
-
-def test():
-    policy.load_state_dict(torch.load('trained.model'))
-    env_reset_leo()
-    f = open('trajectory.json', 'w')
-    s = environment.stdout.readline()
-    state = get_state(s)
-    f.write('[')
-
-    num_iters = 30000
-    for i in range(0,num_iters):
-        action = 0.1 * select_action(state).item() - 0.1
-        #action = 0.01
-        if i > 2500:
-            action = 0
-        state, reward = take_action(action)
-
-        if i % 100 == 0:
-            velocity = state[3:]
-            position = state[:3]
-            print(np.linalg.norm(position), np.linalg.norm(velocity))
-
-        f.write('[')
-        f.write(','.join(map(str, state[:3])))
-        f.write(',' + str(i*60))
-        f.write(',' + str(action))
-        f.write(']')
-        if i < num_iters-1:
-            f.write(',\n')
-    
-    f.write(']')
-    f.close()
 
 
-if __name__ == '__main__':
-    train()
-    # test()
+
+

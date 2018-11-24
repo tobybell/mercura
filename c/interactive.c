@@ -40,6 +40,7 @@ int main() {
         &bodies[1].vel.y,
         &bodies[1].vel.z
       );
+      printf("\n");
     } else if (c == 'a') {
       scanf(" %lf %lf", &thrust_acc, &duration);
 
@@ -59,8 +60,6 @@ int main() {
     } else if (c == 'q') {
       break;
     }
-
-
   }
   return 0;
 }
