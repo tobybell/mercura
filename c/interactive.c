@@ -19,15 +19,6 @@ int main() {
     flt_t thrust_acc;
     flt_t duration;
 
-    // eoe_t eoe;
-    // eoe_from_pv(&eoe, &bodies[1].pos, &bodies[1].vel, bodies[0].sgp);
-    // eoe_println(&eoe);
-    vec3_print(&bodies[1].pos);
-    printf(",");
-    vec3_println(&bodies[1].vel);
-    fflush(stdout);
-
-
     char c;
     scanf(" %c", &c);
     if (c == 'r') {
@@ -59,6 +50,14 @@ int main() {
     } else if (c == 'q') {
       break;
     }
+
+    eoe_t eoe;
+    eoe_from_pv(&eoe, &bodies[1].pos, &bodies[1].vel, bodies[0].sgp);
+    eoe_println(&eoe);
+    // vec3_print(&bodies[1].pos);
+    // printf(",");
+    // vec3_println(&bodies[1].vel);
+    fflush(stdout);
   }
   return 0;
 }
