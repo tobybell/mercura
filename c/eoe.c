@@ -45,9 +45,56 @@ void eoe_from_pv(eoe_t *eoe, vec3_t *r, vec3_t *v, flt_t mu_center) {
 
   // Compute the semi-latus rectum.
   flt_t a = 1 / (2 / r_norm - v_norm * v_norm / mu_center);
-  flt_t slr = a * (1 - vec3_len_sq(&e));
+  flt_t l = a * (1 - vec3_len_sq(&e));
 
-  *eoe = (eoe_t) {slr, h, k, p, q, L};
+  *eoe = (eoe_t) {l, h, k, p, q, L};
+}
+
+/*
+struct eoe {
+  flt_t l;
+  flt_t h;
+  flt_t k;
+  flt_t p;
+  flt_t q;
+  flt_t L;
+};
+*/
+
+void eoe_to_pv(eoe_t *eoe, vec3_t *r, vec3_t *v, flt_t mu_center) {
+  flt_t l = eoe->l;
+  flt_t h = eoe->h;
+  flt_t k = eoe->k;
+  flt_t p = eoe->p;
+  flt_t q = eoe->q;
+  flt_t L = eoe->L;
+
+  flt_t A = 1 + p * p + q * q;
+  vec3_t f = {1 - p * p + q * q, 2 * p * q, -2 * p};
+  vec3_t g = {2 * p * q, 1 + p * p - q * q, 2 * q};
+  vec3_div(&f, A);
+  vec3_div(&g, A);
+
+  flt_t b = 1 - h * h - k * k;
+
+  flt_t radius = l / (1 + h * sin(L) + k * cos(L));
+  flt_t X = radius * cos(L);
+  flt_t Y = radius * sin(L);
+  
+  flt_t c = sqrt(mu_center / l);
+  flt_t dX = -c * (h + sin(L));
+  flt_t dY = c * (k + cos(L));
+
+  vec3_t rf = f, rg = g, vf = f, vg = g;
+  vec3_mul(&rf, X);
+  vec3_mul(&rg, Y);
+  vec3_mul(&vf, dX);
+  vec3_mul(&vg, dY);
+  
+  *r = rf;
+  vec3_add(r, &rg);
+  *v = vf;
+  vec3_add(v, &vg);
 }
 
 void eoe_print(eoe_t *eoe) {

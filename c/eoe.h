@@ -16,6 +16,7 @@ struct eoe {
 typedef struct eoe eoe_t;
 
 void eoe_from_pv(eoe_t *eoe, vec3_t *r, vec3_t *v, flt_t mu_center);
+void eoe_to_pv(eoe_t *eoe, vec3_t *r, vec3_t *v, flt_t mu_center);
 
 void eoe_print(eoe_t *eoe);
 void eoe_println(eoe_t *eoe);
