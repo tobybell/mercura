@@ -6,16 +6,17 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 import torch.optim as optim
+import matplotlib.pyplot as plt
 
 import dqn
 
 
-BATCH_SIZE = 128
+BATCH_SIZE = 100
 GAMMA = 0.999
 EPS_START = 0.9
-EPS_END = 0.05
-EPS_DECAY = 10000
-TARGET_UPDATE = 10
+EPS_END = 0.2
+EPS_DECAY = 30000
+TARGET_UPDATE = 1
 
 
 policy_net = dqn.DQN(6, 3)
@@ -23,9 +24,10 @@ target_net = dqn.DQN(6, 3)
 target_net.load_state_dict(policy_net.state_dict())
 target_net.eval()
 
-optimizer = optim.RMSprop(policy_net.parameters())
-memory = dqn.ReplayMemory(100000)
+optimizer = optim.Adam(policy_net.parameters())
+memory = dqn.ReplayMemory(10000)
 env = dqn.Environment()
+losses = []
 
 
 steps_done = 0
@@ -73,27 +75,31 @@ def optimize_model():
 
     # Compute Huber loss
     loss = F.smooth_l1_loss(state_action_values, expected_state_action_values.unsqueeze(1))
+    losses.append(loss.item())
+    #print(loss.item())
 
     # Optimize the model
     optimizer.zero_grad()
     loss.backward()
-    for param in policy_net.parameters():
-        param.grad.data.clamp_(-1, 1)
+    # for param in policy_net.parameters():
+    #     param.grad.data.clamp_(-1, 1)
     optimizer.step()
 
 
-num_episodes = 1
+num_episodes = 10
 for i_episode in range(num_episodes):
     print(i_episode)
 
     # Initialize the environment and state
-    env.reset_rand()
+    env.reset_leo()
     state = env.get_state()
-    for t in range(10000):
+    action_dist = [0,0,0]
+    for t in range(3000):
         # Select and perform an action
         action = select_action(state)
-        next_state = env.step(action.item(), 60)
-        reward = -1.0 * np.abs(np.linalg.norm(state[:3] - 2e7))
+        action_dist[action] += 1
+        next_state = env.step(action.item(), 600)
+        reward = -1.0 * np.abs(np.linalg.norm(state[:3]) - 2e7)
         # reward = np.abs(np.linalg.norm(state[:3]) - 2e7) - np.abs(np.linalg.norm(next_state[:3]) - 2e7) 
         reward = torch.tensor([reward])
 
@@ -105,10 +111,25 @@ for i_episode in range(num_episodes):
 
         # Perform one step of the optimization (on the target network)
         optimize_model()
-
+        if np.linalg.norm(state[:3]) > 2e9 or np.linalg.norm(state[:3]) < 6e6:
+            print('start')
+            print(2e9)
+            print(6e6)
+            print(np.linalg.norm(state[:3]))
+            print(t)
+            env.reset_leo()
+            state = env.get_state()
+            target_net.load_state_dict(policy_net.state_dict())
+            #plt.plot(losses)
+            #plt.show()
+            #losses = []
+    print(action_dist)
+    #plt.plot(losses)
+    #plt.show()
+    #losses = []
     # Update the target network
-    if i_episode % TARGET_UPDATE == 0:
-        target_net.load_state_dict(policy_net.state_dict())
+    # if i_episode % TARGET_UPDATE == 0:
+    #     target_net.load_state_dict(policy_net.state_dict())
 
 
 torch.save(policy_net.state_dict(), 'trained.model')

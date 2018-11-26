@@ -43,11 +43,16 @@ class DQN(nn.Module):
         self.action_size = action_size
         # self.fc1 = nn.Linear(state_size, 12)
         # self.fc2 = nn.Linear(12, 12)
-        self.head = nn.Linear(1, action_size)
+        # self.head = nn.Linear(12, action_size)
+        self.fc1 = nn.Linear(1, 6)
+        self.head = nn.Linear(6, action_size)
 
     def forward(self, state):
-        x = state[:, :3].norm(dim=1, keepdim=True)
-        # x = F.relu(self.fc1(x))
+        pos = state[:, :3].norm(dim=1, keepdim=True)
+        vel = state[:, 3:].norm(dim=1, keepdim=True)
+        x = torch.cat((pos, vel), 1)
+        # x = state
+        x = F.relu(self.fc1(pos))
         # x = F.relu(self.fc2(x))
         return self.head(x)
 

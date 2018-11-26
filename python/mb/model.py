@@ -13,6 +13,8 @@ class InverseTransitionModel(nn.Module):
     self.head = nn.Linear(16, n_actions)
 
   def forward(self, state, next_state):
+    scale = torch.tensor([1e7, 1.0, 1.0, 1.0, 1.0, 1.0])
+    state = state / scale
     state = F.relu(self.enc1(state))
     state = F.relu(self.enc2(state))
     state = F.relu(self.enc3(state))
