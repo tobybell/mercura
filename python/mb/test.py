@@ -40,8 +40,8 @@ def select_action(state):
 
 
 trajectory = []
-s = env.reset_rand()
-for i in range(20000):
+s = env.reset_leo()
+for i in range(10000):
   a = select_action(s)
   ns = env.step(a, 60)
   pv = eoe_to_pv(s.numpy(), 3.9860044188e14)

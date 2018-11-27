@@ -35,7 +35,7 @@ class Environment(object):
         return pv
 
     def reset_rand(self):
-        r = 7255000 + random.random() * 42241095.67708342
+        r = 7255000 + random.random() * 1e9
         v = math.sqrt(3.9860044188e14 / r)
         t = random.random() * 2 * math.pi
         return self.reset(r * math.cos(t), r * math.sin(t), 0, -v * math.sin(t), v * math.cos(t), 0)

@@ -9,13 +9,14 @@ import torch.optim as optim
 import matplotlib.pyplot as plt
 
 import dqn
+from model import InverseTransitionModel
 
 
 BATCH_SIZE = 100
 GAMMA = 0.999
 EPS_START = 0.9
-EPS_END = 0.2
-EPS_DECAY = 30000
+EPS_END = 0.4
+EPS_DECAY = 3000
 TARGET_UPDATE = 1
 
 
@@ -25,13 +26,37 @@ target_net.load_state_dict(policy_net.state_dict())
 target_net.eval()
 
 optimizer = optim.Adam(policy_net.parameters())
-memory = dqn.ReplayMemory(10000)
+memory = dqn.ReplayMemory(30000)
 env = dqn.Environment()
 losses = []
 
 
 steps_done = 0
 
+#####################
+# MB Model to guide training of the dqn
+#####################
+
+itm = InverseTransitionModel(6, 3)
+itm.load_state_dict(torch.load('itm.model'))
+itm.eval()
+
+
+TARGET = torch.tensor([2e7, 0.0, 0.0, 0.0, 0.0, 0.0])
+#[2e7, 0.0, 0.0, 0.0, 0.0, true_anomally + pi/20]
+
+
+def select_action_mb(state):
+    with torch.no_grad():
+        bait = torch.tensor([2e7, 0.0, 0.0, 0.0, 0.0, state[0,5] + 0.1])
+        
+        a = itm(state.unsqueeze(0), bait.unsqueeze(0))
+        dist = torch.distributions.Categorical(logits=a[0])
+        return dist.sample().item()
+
+#####################
+# End
+#####################
 
 def select_action(state):
     global steps_done
@@ -43,7 +68,7 @@ def select_action(state):
         with torch.no_grad():
             return policy_net(state).max(1)[1].view(1, 1)
     else:
-        return torch.tensor([[random.randrange(3)]], dtype=torch.long)
+        return torch.tensor([[select_action_mb(state)]])
 
 
 def optimize_model():
@@ -86,22 +111,28 @@ def optimize_model():
     optimizer.step()
 
 
-num_episodes = 10
+num_episodes = 70
 for i_episode in range(num_episodes):
     print(i_episode)
 
     # Initialize the environment and state
-    env.reset_leo()
-    state = env.get_state()
+
+    env.reset_rand()
+    state = env.step(1,0)
     action_dist = [0,0,0]
-    for t in range(3000):
+    for t in range(1000):
         # Select and perform an action
         action = select_action(state)
+        #print(action)
         action_dist[action] += 1
-        next_state = env.step(action.item(), 600)
-        reward = -1.0 * np.abs(np.linalg.norm(state[:3]) - 2e7)
+        next_state = env.step(action.item(), 60)
+        reward = -1.0 * np.abs(state[:,0].item() - 2e7)
         # reward = np.abs(np.linalg.norm(state[:3]) - 2e7) - np.abs(np.linalg.norm(next_state[:3]) - 2e7) 
         reward = torch.tensor([reward])
+        if t % 1000 == 0:
+            print(t) 
+            print(reward) 
+            print(state)
 
         # Store the transition in memory
         memory.push(state, action, next_state, reward)
@@ -111,19 +142,16 @@ for i_episode in range(num_episodes):
 
         # Perform one step of the optimization (on the target network)
         optimize_model()
-        if np.linalg.norm(state[:3]) > 2e9 or np.linalg.norm(state[:3]) < 6e6:
-            print('start')
-            print(2e9)
-            print(6e6)
-            print(np.linalg.norm(state[:3]))
-            print(t)
+        if state[:,0] > 4e7 or state[:,0] < 2e3:
             env.reset_leo()
             state = env.get_state()
+            print('RESET')
             target_net.load_state_dict(policy_net.state_dict())
             #plt.plot(losses)
             #plt.show()
             #losses = []
     print(action_dist)
+    target_net.load_state_dict(policy_net.state_dict())
     #plt.plot(losses)
     #plt.show()
     #losses = []
