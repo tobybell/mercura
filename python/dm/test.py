@@ -7,8 +7,9 @@ import torch
 import torch.nn.functional as F
 import torch.optim as optim
 
-from model import TransitionModel, InverseTransitionModel
+from model import InverseTransitionModel
 from environment import Environment
+from eoe import eoe_to_pv
 
 
 itm = InverseTransitionModel(6, 3)
@@ -19,11 +20,21 @@ itm.eval()
 
 
 TARGET = torch.tensor([2e7, 0.0, 0.0, 0.0, 0.0, 0.0])
+#[2e7, 0.0, 0.0, 0.0, 0.0, true_anomally + pi/20]
 
 
 def select_action(state):
     with torch.no_grad():
-        a = itm(state.unsqueeze(0), TARGET.unsqueeze(0))
+        pos = state[:3]
+        t = 1.0 * pos / torch.norm(pos) * 2e7
+        rotation = torch.tensor([[0.9961947,  0.0871557,  0.0000000], \
+                                [-0.0871557,  0.9961947,  0.0000000], \
+                                [0.0000000,  0.0000000,  1.0000000]])
+        t = torch.matmul(rotation, t)
+        t = torch.cat((t, torch.tensor([0.0,0.0,0.0])))
+        bait = torch.tensor([2e7, 0.0, 0.0, 0.0, 0.0, state[5] + 0.1])
+        
+        a = itm(state.unsqueeze(0), bait.unsqueeze(0))
         dist = torch.distributions.Categorical(logits=a[0])
         return dist.sample().item()
 
@@ -33,7 +44,8 @@ s = env.reset_rand()
 for i in range(20000):
   a = select_action(s)
   ns = env.step(a, 60)
-  trajectory.append(list(s.numpy()[:3]) + [i * 60, a, 0])
+  pv = eoe_to_pv(s.numpy(), 3.9860044188e14)
+  trajectory.append(list(pv[:3]) + [i * 60, a, 0])
   s = ns
 
 

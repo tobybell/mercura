@@ -5,6 +5,8 @@ import os.path as path
 
 import torch
 
+from eoe import eoe_to_pv
+
 class Environment(object):
     def __init__(self):
         dirname = path.dirname(__file__)
@@ -35,10 +37,13 @@ class Environment(object):
         return pv
 
     def reset_rand(self):
-        r = 7255000 + random.random() * 1e9
-        v = math.sqrt(3.9860044188e14 / r)
-        t = random.random() * 2 * math.pi
-        return self.reset(r * math.cos(t), r * math.sin(t), 0, -v * math.sin(t), v * math.cos(t), 0)
+        eoe = [7255000 + 1e8 * random.random(),
+               -.25 + .5 * random.random(),
+               -.25 + .5 * random.random(),
+               0,
+               0,
+               2 * math.pi * random.random()]
+        return self.reset(*eoe_to_pv(eoe, 3.9860044188e14))
 
     def reset_geo(self):
         return self.reset(42241095.67708342, 0, 0, 0.017776962751035255, 3071.8591633446, 0)
